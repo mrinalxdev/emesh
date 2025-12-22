@@ -98,7 +98,12 @@ func (n *Node) recvLoop(tr transport.Transport) {
 	}
 }
 
-func (n *Node) Store() store.KV { return n.store }
+//{comment} : this was already casual from the side Store structure
+//side and the public accessor 'Store()' returns a function, not the 
+//interface
+// 
+//changed the helper to return the interface directly
+func (n *Node) Store() store.KV { return n.dlv.db }
 
 func (n *Node) Close() error {
 	t, _ := n.reg.Get(n.id)

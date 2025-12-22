@@ -33,6 +33,7 @@ func main() {
 	reg.Register(*selfID, udp)
 	db := store.NewMemKV()
 
+	// 3. causal broadcast layer
 	node, err := mesh.New(*selfID, reg, db)
 	if err != nil {
 		log.Fatal(err)
@@ -67,7 +68,7 @@ func repl(n *mesh.Node) {
 				log.Println("broadcast:", err)
 			}
 		case "get":
-			val, ok := n.Store.Get(k)
+			val, ok := n.Store().Get(k)
 			if !ok {
 				fmt.Println("key not found")
 			} else {
