@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +13,8 @@ import (
 	"eventmesh/pkg/mesh"
 	"eventmesh/pkg/store"
 	"eventmesh/pkg/transport"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -53,6 +57,13 @@ func main() {
 	<-sig
 	fmt.Println("shutting down…")
 	node.Close()
+	
+	
+	go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			log.Println("metrics on :6060/metrics")
+			log.Fatal(http.ListenAndServe("localhost:6060", nil))
+		}()
 }
 
 func repl(n *mesh.Node) {
@@ -72,7 +83,7 @@ func repl(n *mesh.Node) {
 			if !ok {
 				fmt.Println("key not found")
 			} else {
-				fmt.Println(k, "=", val)
+				fmt.Println(k, "=", val)   // ← this line was missing
 			}
 		default:
 			fmt.Println("unknown command")

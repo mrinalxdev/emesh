@@ -5,9 +5,12 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"eventmesh/pkg/protocol"
 	"eventmesh/pkg/store"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 
@@ -17,19 +20,54 @@ type deliverer struct {
 	mu   sync.Mutex
 	q    []entry
 	db   store.KV
+	
+	//{comment}
+	//adding prometheus metrics for the histogram and
+	//the counter which would counter state variable for
+	recvBytes prometheus.Counter
+	reorderDepth prometheus.Histogram
+	deliverLag prometheus.Histogram
 }
 
 type entry struct {
 	hdr     protocol.Header
 	payload []byte
+	
+	//{comment}
+	//setting it monotonic
+	recvT time.Time
 }
 
+var (
+	recvBytes = prometheus.NewCounter(prometheus.CounterOpts{Name : "emesh_recv_bytes_total"})
+	
+	reorderDepth = prometheus.NewHistogram(prometheus.HistogramOpts{Name : "emesh_reorder_depth"})
+	
+	deliverLag = prometheus.NewHistogram(prometheus.HistogramOpts{ Name : "emesh_deliver_lag_ms"})
+)
+
 func newDeliverer(self string) *deliverer {
-	return &deliverer{
-		self: self,
-		vc:   make(protocol.Vector),
-		db:   store.NewMemKV(), // local copy
+	// return &deliverer{
+	// 	self: self,
+	// 	vc:   make(protocol.Vector),
+	// 	db:   store.NewMemKV(), // local copy
+	// }
+	// 
+	// 
+	// 
+	
+	d := &deliverer{
+		self : self,
+		vc : make(protocol.Vector),
+		db: store.NewMemKV(),
+		recvBytes: recvBytes,
+		reorderDepth: reorderDepth,
+		deliverLag: deliverLag,
 	}
+	
+	prometheus.MustRegister(recvBytes, reorderDepth, deliverLag)
+	
+	return d
 }
 
 func (d *deliverer) copyVC() protocol.Vector {
@@ -41,7 +79,8 @@ func (d *deliverer) copyVC() protocol.Vector {
 func (d *deliverer) submit(hdr protocol.Header, payload []byte) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.q = append(d.q, entry{hdr, payload})
+	// d.q = append(d.q, entry{hdr, payload, time.Now()})
+	d.q = append(d.q, entry{hdr, payload, time.Now()})
 	d.tryDeliver()
 }
 
@@ -50,8 +89,14 @@ func (d *deliverer) tryDeliver() {
 		progress := false
 		for i := 0; i < len(d.q); i++ {
 			e := d.q[i]
+			
+			depth := len(d.q) - i - 1
 			if d.ready(e.hdr.Clock) {
 				d.apply(e.hdr, e.payload)
+				
+				d.reorderDepth.Observe(float64(depth))
+				d.deliverLag.Observe(float64(time.Since(e.recvT).Milliseconds()))
+				
 				// remove
 				d.q = append(d.q[:i], d.q[i+1:]...)
 				i--
