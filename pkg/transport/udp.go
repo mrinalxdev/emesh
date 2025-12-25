@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"net"
 	"sync"
+	
+	_ "net/http/pprof"
 
 	"eventmesh/pkg/protocol"
 )
@@ -41,12 +43,30 @@ func (u *UDP) Send(to net.Addr, hdr protocol.Header, payload []byte) error {
 }
 
 func (u *UDP) Receive() (protocol.Header, []byte, net.Addr, error) {
-	buf := make([]byte, 65536) // max UDP
-	n, addr, err := u.conn.ReadFrom(buf)
+	// buf := make([]byte, 65536) // max UDP
+	// 
+	
+	type bufHolder struct {
+		b [65536]byte
+	}
+	
+	pool := sync.Pool{New: func() interface{} {
+		return new(bufHolder)
+	}}
+	
+	h := pool.Get().(*bufHolder)
+	
+	defer pool.Put(h)
+	
+	n, addr, err := u.conn.ReadFrom(h.b[:])
+	
 	if err != nil {
 		return protocol.Header{}, nil, nil, err
 	}
-	hdr, payload, err := protocol.DecodeHeader(bytes.NewReader(buf[:n]))
+	
+	hdr, payload, err := protocol.DecodeHeader(bytes.NewReader(h.b[:n]))
+	
+	
 	return hdr, payload, addr, err
 }
 
