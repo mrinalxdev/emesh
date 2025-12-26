@@ -1,7 +1,7 @@
 services:
   n1:
     network_mode: host
-    image: golang:latest
+    image: golang:1.25-alpine
     working_dir: /src
     volumes: [".:/src"]
     environment:
@@ -10,7 +10,7 @@ services:
 
   n2:
     network_mode: host
-    image: golang:latest
+    image: golang:1.25-alpine
     working_dir: /src
     volumes: [".:/src"]
     environment:
@@ -19,7 +19,7 @@ services:
 
   n3:
     network_mode: host
-    image: golang:latest
+    image: golang:1.25-alpine
     working_dir: /src
     volumes: [".:/src"]
     environment:

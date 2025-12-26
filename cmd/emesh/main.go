@@ -61,14 +61,14 @@ func main() {
 	
 	
 	go func() {
-		metricsPort := 6060
+		port := 6060
 		if portStr := os.Getenv("METRICS_PORT"); portStr != "" {
-			if p, err := strconv.Atoi(portStr); err == nil {
-				metricsPort = p
+			if i, err := strconv.Atoi(portStr); err == nil {
+				port = i
 			}
 		}
 		
-		addr := fmt.Sprintf("0.0.0.0%d", metricsPort)
+		addr := fmt.Sprintf("0.0.0.0%d", port)
 		http.Handle("/metrics", promhttp.Handler())
 		log.Printf("metrics exposed on http://%s/metrics", addr)
 		log.Fatal(http.ListenAndServe(addr, nil))

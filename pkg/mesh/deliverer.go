@@ -39,7 +39,6 @@ type entry struct {
 }
 
 var (
-	recvBytes = prometheus.NewCounter(prometheus.CounterOpts{Name : "emesh_recv_bytes_total"})
 	
 	reorderDepth = prometheus.NewHistogram(prometheus.HistogramOpts{Name : "emesh_reorder_depth"})
 	
