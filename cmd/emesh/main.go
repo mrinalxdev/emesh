@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"eventmesh/pkg/mesh"
@@ -60,10 +61,18 @@ func main() {
 	
 	
 	go func() {
-			http.Handle("/metrics", promhttp.Handler())
-			log.Println("metrics on :6060/metrics")
-			log.Fatal(http.ListenAndServe("localhost:6060", nil))
-		}()
+		metricsPort := 6060
+		if portStr := os.Getenv("METRICS_PORT"); portStr != "" {
+			if p, err := strconv.Atoi(portStr); err == nil {
+				metricsPort = p
+			}
+		}
+		
+		addr := fmt.Sprintf("0.0.0.0%d", metricsPort)
+		http.Handle("/metrics", promhttp.Handler())
+		log.Printf("metrics exposed on http://%s/metrics", addr)
+		log.Fatal(http.ListenAndServe(addr, nil))
+	}()
 }
 
 func repl(n *mesh.Node) {

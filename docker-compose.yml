@@ -1,19 +1,27 @@
 services:
   n1:
     network_mode: host
-    image: golang:1.22-alpine
+    image: golang:latest
     working_dir: /src
     volumes: [".:/src"]
+    environment:
+      - METRICS_PORT=6061
     command: go run ./cmd/emesh -id n1 -bind :9001 -peers 127.0.0.1:9002,127.0.0.1:9003
+
   n2:
     network_mode: host
-    image: golang:1.22-alpine
+    image: golang:latest
     working_dir: /src
     volumes: [".:/src"]
+    environment:
+      - METRICS_PORT=6062
     command: go run ./cmd/emesh -id n2 -bind :9002 -peers 127.0.0.1:9001,127.0.0.1:9003
+
   n3:
     network_mode: host
-    image: golang:1.22-alpine
+    image: golang:latest
     working_dir: /src
     volumes: [".:/src"]
+    environment:
+      - METRICS_PORT=6063
     command: go run ./cmd/emesh -id n3 -bind :9003 -peers 127.0.0.1:9001,127.0.0.1:9002

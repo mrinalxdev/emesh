@@ -46,28 +46,64 @@ var (
 	deliverLag = prometheus.NewHistogram(prometheus.HistogramOpts{ Name : "emesh_deliver_lag_ms"})
 )
 
-func newDeliverer(self string) *deliverer {
-	// return &deliverer{
-	// 	self: self,
-	// 	vc:   make(protocol.Vector),
-	// 	db:   store.NewMemKV(), // local copy
-	// }
-	// 
-	// 
-	// 
+// func newDeliverer(self string) *deliverer {
+// 	// return &deliverer{
+// 	// 	self: self,
+// 	// 	vc:   make(protocol.Vector),
+// 	// 	db:   store.NewMemKV(), // local copy
+// 	// }
+// 	// 
+// 	// 
+// 	// 
 	
-	d := &deliverer{
-		self : self,
-		vc : make(protocol.Vector),
-		db: store.NewMemKV(),
+// 	d := &deliverer{
+// 		self : self,
+// 		vc : make(protocol.Vector),
+// 		db: store.NewMemKV(),
+// 		recvBytes: recvBytes,
+// 		reorderDepth: reorderDepth,
+// 		deliverLag: deliverLag,
+// 	}
+	
+// 	prometheus.MustRegister(recvBytes, reorderDepth, deliverLag)
+	
+// 	return d
+// }
+
+func newDeliverer(self string) *deliverer {
+	recvBytes := prometheus.NewCounter(prometheus.CounterOpts{
+		Name : "emesh_recv_bytes_total",
+		Help : "Total bytes received",
+		ConstLabels : prometheus.Labels{"node" : self},
+	})
+	
+	
+	reorderDepth := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name : "emesh_deliver_lag_ms",
+		Help : "Time messages spend in reorder buffer (ms)",
+		ConstLabels: prometheus.Labels{"node" : self},
+		Buckets : []float64{0, 1, 2, 5, 10, 20, 50},
+	})
+	
+	
+	deliverLag := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name : "emesh_deliver_lag_ms",
+		Help : "Time messages spend in reorder buffer (ms)",
+		ConstLabels: prometheus.Labels{"node" : self},
+		Buckets: prometheus.DefBuckets,
+	})
+	
+	prometheus.MustRegister(recvBytes, reorderDepth, deliverLag)
+	
+	
+	return &deliverer{
+		self: self,
+		vc: make(protocol.Vector),
+		db : store.NewMemKV(),
 		recvBytes: recvBytes,
 		reorderDepth: reorderDepth,
 		deliverLag: deliverLag,
 	}
-	
-	prometheus.MustRegister(recvBytes, reorderDepth, deliverLag)
-	
-	return d
 }
 
 func (d *deliverer) copyVC() protocol.Vector {
@@ -77,11 +113,19 @@ func (d *deliverer) copyVC() protocol.Vector {
 }
 
 func (d *deliverer) submit(hdr protocol.Header, payload []byte) {
+	// d.mu.Lock()
+	// defer d.mu.Unlock()
+	// // d.q = append(d.q, entry{hdr, payload, time.Now()})
+	// d.q = append(d.q, entry{hdr, payload, time.Now()})
+	// d.tryDeliver()
+	// 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	// d.q = append(d.q, entry{hdr, payload, time.Now()})
-	d.q = append(d.q, entry{hdr, payload, time.Now()})
-	d.tryDeliver()
+	
+	estimatedHeaderBytes := 24 + 24*int(hdr.ClockLen)
+	totalBytes := float64(estimatedHeaderBytes + len(payload))
+	
+	d.recvBytes.Add(totalBytes)
 }
 
 func (d *deliverer) tryDeliver() {
