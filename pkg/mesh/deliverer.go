@@ -38,12 +38,6 @@ type entry struct {
 	recvT time.Time
 }
 
-var (
-	
-	reorderDepth = prometheus.NewHistogram(prometheus.HistogramOpts{Name : "emesh_reorder_depth"})
-	
-	deliverLag = prometheus.NewHistogram(prometheus.HistogramOpts{ Name : "emesh_deliver_lag_ms"})
-)
 
 // func newDeliverer(self string) *deliverer {
 // 	// return &deliverer{
@@ -78,7 +72,7 @@ func newDeliverer(self string) *deliverer {
 	
 	
 	reorderDepth := prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name : "emesh_deliver_lag_ms",
+		Name : "emesh_reorder_depth",
 		Help : "Time messages spend in reorder buffer (ms)",
 		ConstLabels: prometheus.Labels{"node" : self},
 		Buckets : []float64{0, 1, 2, 5, 10, 20, 50},
@@ -125,6 +119,19 @@ func (d *deliverer) submit(hdr protocol.Header, payload []byte) {
 	totalBytes := float64(estimatedHeaderBytes + len(payload))
 	
 	d.recvBytes.Add(totalBytes)
+	
+	d.q = append(d.q, entry{
+		hdr : hdr,
+		payload: payload,
+		recvT: time.Now(),
+	})
+	
+	d.tryDeliver() //lol didn't saw this and commented this
+	// thats the reasone i am not getting any logs part of the
+	//messages that have been delivered to me
+	// 
+	//also a small note 'tryDeliver()' already loops until no progress
+	//so calling it once after enqueue is sufficient
 }
 
 func (d *deliverer) tryDeliver() {

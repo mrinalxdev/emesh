@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"eventmesh/pkg/mesh"
@@ -38,13 +40,11 @@ func main() {
 	reg.Register(*selfID, udp)
 	db := store.NewMemKV()
 
-	// 3. causal broadcast layer
 	node, err := mesh.New(*selfID, reg, db)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 4. connect to peers
 	if *peers != "" {
 		if err := node.DialPeers(*peers); err != nil {
 			log.Fatal(err)
@@ -76,23 +76,35 @@ func main() {
 }
 
 func repl(n *mesh.Node) {
-	fmt.Println("type  'put key value'  or  'get key'  (commands are broadcast causally)")
-	for {
-		var op, k, v string
-		if _, err := fmt.Scanln(&op, &k, &v); err != nil {
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println("type 'put key value' or 'get key' (commands are broadcast causally)")
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
 			continue
 		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			fmt.Println("usage: put key value  OR  get key")
+			continue
+		}
+		op := parts[0]
 		switch op {
 		case "put":
-			if err := n.BroadcastPut(k, v); err != nil {
+			if len(parts) < 3 {
+				fmt.Println("usage: put key value")
+				continue
+			}
+			key, val := parts[1], parts[2]
+			if err := n.BroadcastPut(key, val); err != nil {
 				log.Println("broadcast:", err)
 			}
 		case "get":
-			val, ok := n.Store().Get(k)
-			if !ok {
+			key := parts[1]
+			if val, ok := n.Store().Get(key); !ok {
 				fmt.Println("key not found")
 			} else {
-				fmt.Println(k, "=", val)   // ← this line was missing
+				fmt.Println(key, "=", val)
 			}
 		default:
 			fmt.Println("unknown command")
