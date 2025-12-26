@@ -1,7 +1,8 @@
 package mesh
 
 import (
-	"bytes"
+	// "bytes"
+	// "fmt"
 	"log"
 	"net"
 	"strings"
@@ -13,12 +14,12 @@ import (
 )
 
 type Node struct {
-	id      string
-	reg     *transport.Registry
-	store   store.KV
-	dlv     *deliverer
-	peerAdd map[string]net.Addr //id
-	mu      sync.RWMutex
+	id     string
+	reg    *transport.Registry
+	store  store.KV
+	dlv    *deliverer
+	peers  []net.Addr 
+	mu     sync.RWMutex
 }
 
 func New(id string, reg *transport.Registry, store store.KV) (*Node, error) {
@@ -26,7 +27,7 @@ func New(id string, reg *transport.Registry, store store.KV) (*Node, error) {
 		id:      id,
 		reg:     reg,
 		store:   store,
-		peerAdd: make(map[string]net.Addr),
+		peers: make([]net.Addr, 0),
 		dlv:     newDeliverer(id),
 	}
 	// start receive loop
@@ -35,7 +36,26 @@ func New(id string, reg *transport.Registry, store store.KV) (*Node, error) {
 	return n, nil
 }
 
+// func (n *Node) DialPeers(list string) error {
+// 	for _, p := range strings.Split(list, ",") {
+// 		if p == "" {
+// 			continue
+// 		}
+// 		addr, err := net.ResolveUDPAddr("udp", p)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		id := p
+// 		n.mu.Lock()
+// 		n.peerAdd[id] = addr
+// 		n.mu.Unlock()
+// 	}
+// 	return nil
+// }
+
+
 func (n *Node) DialPeers(list string) error {
+	var addrs []net.Addr
 	for _, p := range strings.Split(list, ",") {
 		if p == "" {
 			continue
@@ -44,19 +64,46 @@ func (n *Node) DialPeers(list string) error {
 		if err != nil {
 			return err
 		}
-		id := p
-		n.mu.Lock()
-		n.peerAdd[id] = addr
-		n.mu.Unlock()
+		addrs = append(addrs, addr)
 	}
+	n.mu.Lock()
+	n.peers = addrs
+	n.mu.Unlock()
 	return nil
 }
 
+// func (n *Node) BroadcastPut(key, value string) error {
+// 	n.mu.RLock()
+// 	vc := n.dlv.copyVC()
+// 	n.mu.RUnlock()
+
+// 	vc[n.id]++
+// 	hdr := protocol.Header{}
+// 	copy(hdr.From[:], n.id)
+// 	hdr.Clock = vc
+// 	hdr.ClockLen = uint8(len(vc))
+
+// 	payload := []byte("PUT:" + key + ":" + value)
+
+// 	n.mu.RLock()
+// 	defer n.mu.RUnlock()
+// 	for id, addr := range n.peerAdd {
+// 		t, ok := n.reg.Get(id)
+// 		if !ok {
+// 			continue 
+// 		}
+// 		if err := t.Send(addr, hdr, payload); err != nil {
+// 			log.Printf("send to %s: %v", id, err)
+// 		}
+// 	}
+
+// 	n.dlv.submit(hdr, payload)
+// 	return nil
+// }
 func (n *Node) BroadcastPut(key, value string) error {
 	n.mu.RLock()
 	vc := n.dlv.copyVC()
 	n.mu.RUnlock()
-
 	vc[n.id]++
 	hdr := protocol.Header{}
 	copy(hdr.From[:], n.id)
@@ -64,40 +111,55 @@ func (n *Node) BroadcastPut(key, value string) error {
 	hdr.ClockLen = uint8(len(vc))
 
 	payload := []byte("PUT:" + key + ":" + value)
-
+	n.dlv.submit(hdr, payload)
 	n.mu.RLock()
-	defer n.mu.RUnlock()
-	for id, addr := range n.peerAdd {
-		t, ok := n.reg.Get(id)
-		if !ok {
-			continue 
-		}
+	peers := n.peers
+	t, ok := n.reg.Get(n.id) 
+	n.mu.RUnlock()
+
+	if !ok {
+		log.Printf("own transport missing for %s", n.id)
+		return nil 
+	}
+
+	for _, addr := range peers {
 		if err := t.Send(addr, hdr, payload); err != nil {
-			log.Printf("send to %s: %v", id, err)
+			log.Printf("send to %s: %v", addr, err)
 		}
 	}
 
-	n.dlv.submit(hdr, payload)
 	return nil
 }
 
+
+// func (n *Node) recvLoop(tr transport.Transport) {
+// 	for {
+// 		hdr, payload, from, err := tr.Receive()
+// 		if err != nil {
+// 			log.Printf("recv: %v", err)
+// 			return
+// 		}
+
+// 		id := string(bytes.TrimRight(hdr.From[:], "\x00"))
+// 		n.mu.Lock()
+// 		n.peers[id] = from
+// 		n.mu.Unlock()
+
+// 		n.dlv.submit(hdr, payload)
+// 	}
+// }
+// 
+
 func (n *Node) recvLoop(tr transport.Transport) {
 	for {
-		hdr, payload, from, err := tr.Receive()
+		hdr, payload, _, err := tr.Receive()
 		if err != nil {
 			log.Printf("recv: %v", err)
 			return
 		}
-
-		id := string(bytes.TrimRight(hdr.From[:], "\x00"))
-		n.mu.Lock()
-		n.peerAdd[id] = from
-		n.mu.Unlock()
-
 		n.dlv.submit(hdr, payload)
 	}
 }
-
 //{comment} : this was already casual from the side Store structure
 //side and the public accessor 'Store()' returns a function, not the 
 //interface
